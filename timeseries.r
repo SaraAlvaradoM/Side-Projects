@@ -25,14 +25,27 @@ view(data_raw)
 data_tsibble <- data_raw |>
     rename("StartDate" = "Start Date") |>
     rename("Kilowatts" = "Kilowatts/Hour") |> 
-    rename("AvgHighTemp" = "Avg. High Temp") |> #changed name, it was giving me issues
-    mutate(StartDate = ymd(StartDate), 
-            Year = year(StartDate), 
-            Month = month(StartDate)) |> #set up date format for tsibble prep
-    #as.numeric(as.character($Kilowatts)) |>
+    rename("AvgTemp" = "Avg. Avg. Temp") |> #changed name, it was giving me issues
+    mutate(StartDate = ymd(StartDate),
+            Year = year(StartDate),
+            Month = month(StartDate), #set up date format for tsibble prep
+            PowerPerDay = Kilowatts/Days) |> #used to adjust for variation in the number of days per month
     as_tsibble(index = StartDate,
                 key = c(Year, Month))
 view(data_tsibble)
+
+tibble_test <- data_raw |>
+    rename("StartDate" = "Start Date") |>
+    rename("Kilowatts" = "Kilowatts/Hour") |>
+    rename("AvgTemp" = "Avg. Avg. Temp") |>
+    mutate(StartDate = ymd(StartDate), 
+            Year = year(StartDate),
+            Month = month(StartDate),
+            PowerPerDay = Kilowatts/Days,
+            CostPerDay = Cost/Days,
+            CostPerKilowatt = Cost/Kilowatts) |>
+    as_tibble()
+view(tibble_test)
 
 #basic plotting of power usage and average high temperature to identify seasonal patterns
 p <- ggplot(data = data_tsibble, mapping = aes(x = StartDate, y = Kilowatts)) +
@@ -45,15 +58,39 @@ t <- ggplot(data = data_tsibble, mapping = aes(x = StartDate, y = AvgHighTemp)) 
     theme_minimal()
 t
 
-#look at doing a facetting or putting one plot on top of another
-test <- ggplot(data = data_tsibble, mapping = aes(x = StartDate, y = Kilowatts)) +
-    facet_grid()
+#pivot data for ease of plotting multiple variables in one chart
+data_pivot <- data_tsibble |>
+    select(Kilowatts, AvgTemp, PowerPerDay, Cost, Year, Month) |>
+    pivot_longer(cols = c(Kilowatts, AvgTemp, PowerPerDay, Cost), names_to = "Variable", values_to = "Value")
+view(data_pivot)
 
+#pivot data for ease of plotting multiple variables in one chart
+data_pivot2 <- tibble_test |>
+    select(StartDate, Kilowatts, AvgTemp, PowerPerDay, Cost, Year, Month) |>
+    pivot_longer(cols = c(Kilowatts, AvgTemp, PowerPerDay, Cost), names_to = "Variable", values_to = "Value")
+view(data_pivot2)
 
-
-ggplot(data = data_tsibble, mapping = aes(x = StartDate)) +
-    geom_line(aes(y = Kilowatts), color = "blue", linewidth = 0.8) +
-    geom_line(aes(y = AvgHighTemp), color = "red", linewidth = 0.8) +
-    scale_y_discrete(name = "Power Usage",
-        sec.axis = sec_axis(name = "Average Temperature", ~.-)) +
+tempVpower <- ggplot(data_pivot, aes(x = StartDate, y = Value)) +
+    geom_line(data = subset(data_pivot, Variable =="PowerPerDay"), stat = "identity", color = "blue") +
+    # get some form of trend line on these two  
+    geom_line(data = subset(data_pivot, Variable =="AvgTemp"), stat = "identity", color = "red") +
+    #geom_smooth(method = "loess", se = TRUE) 
+    #+
+    #facet_grid(rows = Variable ~ ., scales = "free_y", cols = Year) +
     theme_minimal()
+tempVpower
+
+tempVpower2 <- ggplot(data_pivot2, aes(x = Month, y = Value)) +
+    geom_line(data = subset(data_pivot2, Variable =="PowerPerDay"), stat = "identity", color = "blue") +
+    # get some form of trend line on these two  
+    geom_line(data = subset(data_pivot2, Variable =="AvgTemp"), stat = "identity", color = "red") +
+    #geom_smooth(method = "loess", se = TRUE) +
+    facet_grid(rows = Year ~ ., scales = "free_y") +
+    theme_minimal()
+tempVpower2
+
+tempGraph <- ggplot(data = subset(data_pivot2, Variable =="AvgTemp"), aes(x = Month, y = Value, color = Year)) +
+    geom_line() +
+    theme_minimal()
+tempGraph
+
